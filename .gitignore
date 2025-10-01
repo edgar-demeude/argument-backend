@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Environments
+env/
+venv/
+.venv/
+.idea/
+*.egg-info/
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints
+
+# PyCharm / VSCode
+.vscode/
+*.iml
+*.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Models / outputs
+# models/*.pth
+# *.pt
+# *.pkl
+
+# Others
+*.egg
+dist/
+build/
