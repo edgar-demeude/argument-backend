@@ -1,11 +1,12 @@
-import torch
-import joblib
-from sentence_transformers import SentenceTransformer
 import os
 
 # For Huggingface
 os.environ["TRANSFORMERS_CACHE"] = "/tmp/hf_cache"
 os.makedirs("/tmp/hf_cache", exist_ok=True)
+
+import torch
+import joblib
+from sentence_transformers import SentenceTransformer
 
 class MLP(torch.nn.Module):
     def __init__(self, input_dim=3073, dropout_rate=0.5):
