@@ -1,7 +1,8 @@
 import os
 
-os.environ["TRANSFORMERS_CACHE"] = os.path.expanduser("~/.cache/huggingface")
-os.makedirs(os.environ["TRANSFORMERS_CACHE"], exist_ok=True)
+cache_dir = os.path.expanduser("~/.cache/huggingface")
+os.environ["TRANSFORMERS_CACHE"] = cache_dir
+os.makedirs(cache_dir, exist_ok=True)
 
 import torch
 import joblib
@@ -38,5 +39,5 @@ def load_model_and_metadata(model_path: str, model_type: str = "pytorch"):
         best_threshold = checkpoint.get('best_threshold', 0.5)
         label_encoder = checkpoint['label_encoder']
 
-    embedding_model = SentenceTransformer('all-mpnet-base-v2', cache_folder='/app/cache')
+    embedding_model = SentenceTransformer('all-mpnet-base-v2', cache_folder=cache_dir)
     return model, embedding_model, best_threshold, label_encoder
