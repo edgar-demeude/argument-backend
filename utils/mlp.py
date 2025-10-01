@@ -1,6 +1,5 @@
 import os
 
-# Cache sûr et toujours accessible
 cache_dir = "/tmp/hf_cache"
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
 os.makedirs(cache_dir, exist_ok=True)
