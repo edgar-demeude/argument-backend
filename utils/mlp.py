@@ -1,6 +1,10 @@
 import torch
 import joblib
 from sentence_transformers import SentenceTransformer
+import os
+
+os.environ["TRANSFORMERS_CACHE"] = "/app/cache"
+os.makedirs("/app/cache", exist_ok=True)
 
 class MLP(torch.nn.Module):
     def __init__(self, input_dim=3073, dropout_rate=0.5):
