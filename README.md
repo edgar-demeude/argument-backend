@@ -3,7 +3,7 @@ title: "Argument Mining Backend"
 emoji: "🧠"
 colorFrom: "blue"
 colorTo: "green"
-sdk: "python"
+sdk: "docker"
 sdk_version: "3.10"
 app_file: app.py
 pinned: false
