@@ -1,3 +1,8 @@
+import os
+
+os.environ["TRANSFORMERS_CACHE"] = os.path.expanduser("~/.cache/huggingface")
+os.makedirs(os.environ["TRANSFORMERS_CACHE"], exist_ok=True)
+
 import torch
 import joblib
 from sentence_transformers import SentenceTransformer

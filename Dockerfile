@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 # Set Hugging Face cache to writable directory
 ENV TRANSFORMERS_CACHE=/app/cache
-RUN mkdir -p /app/cache
+RUN mkdir -p /app/cache && chmod -R 777 /app/cache
 
 # Copy requirements
 COPY requirements.txt .
@@ -26,6 +26,8 @@ COPY . .
 
 # Expose Uvicorn port
 EXPOSE 7860
+
+USER root
 
 # Start command
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
