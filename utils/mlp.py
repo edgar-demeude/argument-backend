@@ -1,8 +1,8 @@
 import os
 
 # For Huggingface
-os.environ["TRANSFORMERS_CACHE"] = "/tmp/hf_cache"
-os.makedirs("/tmp/hf_cache", exist_ok=True)
+os.environ["TRANSFORMERS_CACHE"] = "/app/cache"
+os.makedirs("/app/cache", exist_ok=True)
 
 import torch
 import joblib
