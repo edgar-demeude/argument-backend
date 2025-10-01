@@ -1,9 +1,3 @@
-import os
-
-# For Huggingface
-os.environ["TRANSFORMERS_CACHE"] = "/app/cache"
-os.makedirs("/app/cache", exist_ok=True)
-
 import torch
 import joblib
 from sentence_transformers import SentenceTransformer
@@ -39,5 +33,5 @@ def load_model_and_metadata(model_path: str, model_type: str = "pytorch"):
         best_threshold = checkpoint.get('best_threshold', 0.5)
         label_encoder = checkpoint['label_encoder']
 
-    embedding_model = SentenceTransformer('all-mpnet-base-v2')
+    embedding_model = SentenceTransformer('all-mpnet-base-v2', cache_folder='/app/cache')
     return model, embedding_model, best_threshold, label_encoder
