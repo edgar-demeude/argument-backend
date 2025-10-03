@@ -1,0 +1,8 @@
+
+L: [a,b,l,s,y]
+A: [a,b,y]
+C(a): s
+C(b): l
+[r1]: l <- a,y
+[r2]: s <- b,y
+PREF: b > a and y > a

@@ -1,0 +1,11 @@
+L: [a,b,c,q,p,r,s,t]
+[r1]: p <- q,a
+[r2]: q <- 
+[r3]: r <- b,c
+[r4]: t <- p,c
+[r5]: s <- t
+A: [a,b,c]
+C(a): r
+C(b): s
+C(c): t
+PREF: a > b

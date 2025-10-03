@@ -1,0 +1,34 @@
+Résultat attendu pour le example.txt en aba_plus
+
+
+------- Normal Attacks (by assumption sets) -------
+  {c,b,a} attacks {b}
+  {c,a} attacks {c,b}
+  {c,b,a} attacks {c,a}
+  {c,b,a} attacks {c}
+  {c,a} attacks {b,a}
+  {c,a} attacks {c,a}
+  {c,a} attacks {b}
+  {c,b,a} attacks {c,b,a}
+  {c,b,a} attacks {c,b}
+  {c,a} attacks {c,b,a}
+  {c,a} attacks {c}
+  {c,a} attacks {b,a}
+
+ ------- Reverse Attacks (by assumption sets) -------
+  {c,a} attacks {c,b}
+  {b,a} attacks {c, b, a}
+  {b,a} attacks {c, b}
+  {c,b,a} attacks {,b,ac}
+  {a} attacks {c,b,c}
+  {c,b,a} attacks {c,b}
+  {a} attacks {c,b}
+  {c,a} attacks {c,b,a}
+
+
+---- Resultat atttendu -----
+
+Total combinations: 8
+a, ab, ac, abc, c, b, cb, ensemble_vide
+
+
