@@ -11,29 +11,44 @@ pinned: false
 
 # 🧠 Argument Mining Backend (FastAPI)
 
-Ce backend expose une API REST pour prédire les relations argumentatives (Support / Attack) entre des phrases.
-Il est conçu pour être utilisé avec un frontend (par exemple un site en Next.js).
+Argument Mining Backend is a REST API designed to predict argumentative relations (Support / Attack) between sentences and analyze text using the ABA (Assumption-Based Argumentation) framework.
+It is intended to be used alongside a frontend application (e.g., Next.js or React).
 
 ---
 
-## 🚀 Fonctionnalités
-- Endpoint `/predict-text` : prédiction sur deux arguments donnés à la main.  
-- Endpoint `/predict-csv` : prédiction sur un fichier CSV contenant des paires d’arguments.  
-- Prétraitement basique du texte avant passage au modèle.  
+## 🚀 Features
+- Endpoint `/predict-text` : Predict the relation between two manually provided arguments.
+- Endpoint `/predict-csv` : Predict relations from a CSV file containing argument pairs.
+- Endpoint `/aba-upload` : Upload a text file to generate and analyze an ABA+ framework.
+- Endpoint `/aba-example` : Run ABA analysis on predefined example text.
+- Endpoint `/aba-exemple/{filename}` : Analyze ABA with a predefined text file.
+- Text preprocessing before feeding data into the model.  
 - Chargement d’un modèle sauvegardé (`model.pkl`, `.pt`, etc.).
+- Load saved machine learning models (.pt, .pkl, etc.) for inference.
+- Automatic Swagger documentation for easy API exploration.
+- CORS middleware for cross-origin requests.
 
 ---
 
 ## 📦 Installation
 
-1. Cloner le dépôt :
+## Clone the repository
 
 ```bash
 git clone https://github.com/<ton-user>/argument-backend.git
 cd argument-backend
 ```
 
-### Option 1 : via pip (classique)
+## Setup environment
+
+### Option 1: Using Conda (recommended)
+
+```bash
+conda env create -f environment.yml
+conda activate argument-backend
+```
+
+### Option 2: Using Python venv
 
 ```bash
 python -m venv venv
@@ -43,52 +58,31 @@ venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 ```
 
-### Option 2 : via Conda (recommandé)
-
-Créer l’environnement à partir du fichier environment.yml :
-
-```bash
-conda env create -f environment.yml
-conda activate argument-backend
-```
-
-3. Installer les dépendances :
-
-```bash
-pip install -r requirements.txt
-```
-
-## ▶️ Lancer en local
+## ▶️ Running Locally
 
 ```bash
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-L’API sera dispo sur : http://127.0.0.1:8000
-Et la doc Swagger automatique ici : http://127.0.0.1:8000/docs
+- API will be available at: http://127.0.0.1:8000
+- Swagger UI documentation: http://127.0.0.1:8000/docs
 
-## 📂 Structure du projet
+## 📂 Project Structure
 
+```bash
 argument-backend/
-│── app.py             # API FastAPI
-│── model_utils.py     # Chargement du modèle + prédiction
-│── requirements.txt   # Dépendances Python
-│── model.pkl          # (à ajouter) modèle sauvegardé
+│── app.py      # FastAPI application entrypoint
+│── aba         # ABA framework modules
+│── relations   # Argument relation prediction modules
+│── models      # Saved ML models (.pth, .pkl, etc.)
+```
 
-## 🌍 Déploiement sur Render
+## ⚡Notes
 
-Pousser ce repo sur GitHub.
+- Designed for seamless integration with a frontend application for visualizing argument graphs.
+- Supports batch prediction with CSV files (limited to 100 rows per request).
+- ABA+ framework generation supports assumptions, arguments, attacks, and reverse attacks.
 
-Sur Render
-, créer un New Web Service → connecter le repo.
+## 🌐 Live Demo
 
-Paramètres Render :
-
-- Environment: Python 3.x
-- Build Command: pip install -r requirements.txt
-- Start Command:
-uvicorn app:app --host 0.0.0.0 --port 10000
-
-Une fois déployé, Render donnera une URL publique du type :
-https://argument-backend.onrender.com
-
+Check the live frontend here: [Arguments Visualization](https://arguments-visualisation.vercel.app/)
