@@ -56,9 +56,8 @@ def root():
 
 @app.post("/predict-test")
 def predict_test():
-    """Run predefined test cases for BERT model validation."""
-    run_tests(model, tokenizer, device, test_cases)
-    return {"message": "Test cases executed. Check server logs for details."}
+    results = run_tests(model, tokenizer, device, test_cases)
+    return {"results": results}
 
 
 @app.post("/predict-text")

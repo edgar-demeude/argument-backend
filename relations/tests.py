@@ -21,34 +21,21 @@ def print_pretty_prediction(result: dict, test_case_num: int, expected: str, cla
 
 
 def run_tests(model, tokenizer, device, test_cases):
-    """Run test cases using the BERT model."""
-    print("\n" + "="*70)
-    print("RUNNING TEST CASES")
-    print("="*70)
-
-    start_time = time.time()
-    correct_predictions = 0
+    results_list = []
 
     for i, case in enumerate(test_cases, start=1):
-        result = predict_relation(
-            case["claim1"],
-            case["claim2"],
-            model,
-            tokenizer,
-            device
-        )
-        print_pretty_prediction(result, i, case["expected"], case["claim1"], case["claim2"])
+        result = predict_relation(case["claim1"], case["claim2"], model, tokenizer, device)
+        correct = result["predicted_label"] == case["expected"]
 
-        if result["predicted_label"] == case["expected"]:
-            correct_predictions += 1
+        results_list.append({
+            "test_case": i,
+            "claim1": case["claim1"],
+            "claim2": case["claim2"],
+            "expected": case["expected"],
+            "predicted": result["predicted_label"],
+            "probability": result["probability"],
+            "confidence": result["confidence"],
+            "correct": correct
+        })
 
-    # Summary
-    accuracy = (correct_predictions / len(test_cases)) * 100
-    elapsed_time = time.time() - start_time
-    print(f"\n{'='*70}")
-    print("SUMMARY")
-    print(f"{'='*70}")
-    print(f"Correct predictions: {correct_predictions}/{len(test_cases)}")
-    print(f"Accuracy: {accuracy:.1f}%")
-    print(f"Time taken: {elapsed_time:.2f} seconds")
-    print(f"{'='*70}\n")
+    return results_list
