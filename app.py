@@ -10,10 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from pathlib import Path
 import torch
+import io
 
-from relations.tests import run_tests
 from relations.predict_bert import predict_relation
-from exemples.claims import test_cases
 
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
@@ -37,6 +36,7 @@ app.add_middleware(
 )
 
 EXAMPLES_DIR = Path("./aba/exemples")
+SAMPLES_DIR = Path("./relations/exemples/samples")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -54,12 +54,6 @@ def root():
 
 # ---------------- BERT Prediction Endpoints ---------------- #
 
-@app.post("/predict-test")
-def predict_test():
-    results = run_tests(model, tokenizer, device, test_cases)
-    return {"results": results}
-
-
 @app.post("/predict-text")
 def predict_text(arg1: str = Form(...), arg2: str = Form(...)):
     """Predict relation between two text arguments using BERT."""
@@ -73,10 +67,13 @@ def predict_text(arg1: str = Form(...), arg2: str = Form(...)):
 
 @app.post("/predict-csv")
 async def predict_csv(file: UploadFile):
-    """Predict relations for pairs of arguments from a CSV file (max 100 rows)."""
-    df = pd.read_csv(file.file)
-    if len(df) > 100:
-        df = df.head(100)
+    """Predict relations for pairs of arguments from a CSV file (max 250 rows)."""
+    content = await file.read()
+    # Utiliser StringIO + quotechar='"'
+    df = pd.read_csv(io.StringIO(content.decode("utf-8")), quotechar='"')
+    
+    if len(df) > 250:
+        df = df.head(250)
 
     results = []
     for _, row in df.iterrows():
@@ -93,8 +90,21 @@ async def predict_csv(file: UploadFile):
             "relation": result
         })
 
-    return {"results": results, "note": "Limited to 100 rows max"}
+    return {"results": results, "note": "Limited to 250 rows max"}
 
+
+@app.get("/samples")
+def list_samples():
+    files = [f for f in os.listdir(SAMPLES_DIR) if f.endswith(".csv")]
+    return {"samples": files}
+
+
+@app.get("/samples/{filename}")
+def get_sample(filename: str):
+    file_path = os.path.join(SAMPLES_DIR, filename)
+    if not os.path.exists(file_path):
+        return {"error": "Sample not found"}
+    return FileResponse(file_path, media_type="text/csv")
 
 # ---------------- ABA API ---------------- #
 
