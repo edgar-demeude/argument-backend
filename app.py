@@ -3,15 +3,16 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from pathlib import Path
+import torch
 
 from relations.tests import run_tests
-from relations.predict import predict_relation
-from relations.mlp import load_model_and_metadata
-from relations.processor import ArgumentDataProcessor
+from relations.predict_bert import predict_relation
 from exemples.claims import test_cases
 
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
 # ABA imports
-from aba.aba_builder import build_aba_framework, prepare_aba_plus_framework, build_aba_framework_from_text
+from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
 
 app = FastAPI(title="Argument Mining API")
 
@@ -31,59 +32,60 @@ app.add_middleware(
 
 EXAMPLES_DIR = Path("./aba/exemples")
 
-# Load ML model at startup
-PYTORCH_MODEL_PATH = "models/model.pth"
-model_type = "pytorch"
-model, embedding_model, best_threshold, label_encoder = load_model_and_metadata(
-    PYTORCH_MODEL_PATH, model_type
-)
-processor = ArgumentDataProcessor()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Load model at startup once
+model_name = "edgar-demeude/bert-argument"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSequenceClassification.from_pretrained(model_name)
+model.to(device)
+
 
 @app.get("/")
 def root():
     return {"message": "Argument Mining API is running..."}
 
 
-# ---------------- ML Prediction Endpoints ---------------- #
+# ---------------- BERT Prediction Endpoints ---------------- #
 
 @app.post("/predict-test")
 def predict_test():
-    """Run predefined test cases for model validation."""
-    run_tests(model, embedding_model, processor, best_threshold, label_encoder, model_type, test_cases)
+    """Run predefined test cases for BERT model validation."""
+    run_tests(model, tokenizer, device, test_cases)
     return {"message": "Test cases executed. Check server logs for details."}
 
 
 @app.post("/predict-text")
 def predict_text(arg1: str = Form(...), arg2: str = Form(...)):
-    """Predict relation between two text arguments."""
-    relation = predict_relation(arg1, arg2, model, embedding_model, processor, best_threshold, label_encoder, model_type)
-    return {"arg1": arg1, "arg2": arg2, "relation": relation}
+    """Predict relation between two text arguments using BERT."""
+    result = predict_relation(arg1, arg2, model, tokenizer, device)
+    return {
+        "arg1": arg1,
+        "arg2": arg2,
+        "relation": result
+    }
 
 
 @app.post("/predict-csv")
 async def predict_csv(file: UploadFile):
     """Predict relations for pairs of arguments from a CSV file (max 100 rows)."""
     df = pd.read_csv(file.file)
-
     if len(df) > 100:
         df = df.head(100)
 
     results = []
     for _, row in df.iterrows():
-        relation = predict_relation(
+        result = predict_relation(
             row["parent"],
             row["child"],
             model,
-            embedding_model,
-            processor,
-            best_threshold,
-            label_encoder,
-            model_type
+            tokenizer,
+            device
         )
         results.append({
             "parent": row["parent"],
             "child": row["child"],
-            "relation": relation
+            "relation": result
         })
 
     return {"results": results, "note": "Limited to 100 rows max"}
@@ -114,11 +116,13 @@ async def aba_upload(file: UploadFile = File(...)):
     }
     return results
 
+
 @app.get("/aba-examples")
 def list_aba_examples():
     """Lists all sample files available on the server side."""
     examples = [f.name for f in EXAMPLES_DIR.glob("*.txt")]
     return {"examples": examples}
+
 
 @app.get("/aba-examples/{filename}")
 def get_aba_example(filename: str):

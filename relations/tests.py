@@ -1,12 +1,11 @@
 import time
-from .predict import predict_relation
+from .predict_bert import predict_relation
 
-def print_pretty_prediction(result: dict, test_case_num: int, expected: str, claim1: str, claim2: str, best_threshold: float):
+def print_pretty_prediction(result: dict, test_case_num: int, expected: str, claim1: str, claim2: str):
     """Pretty-print the result of a single test case."""
     prediction = result["predicted_label"]
     confidence = result["confidence"]
     probability = result["probability"]
-
     status = "✅ Correct" if prediction == expected else "❌ Incorrect"
 
     print(f"\n{'='*70}")
@@ -16,16 +15,13 @@ def print_pretty_prediction(result: dict, test_case_num: int, expected: str, cla
     print(f"Claim 2: {claim2}")
     print(f"\nExpected:   {expected}")
     print(f"Predicted:  {prediction}")
-    print(f"Probability: {probability:.4f} (threshold: {best_threshold:.3f})")
+    print(f"Probability: {probability:.4f}")
     print(f"Confidence: {confidence:.2%}")
     print(f"Status:     {status}")
 
 
-def run_tests(model, embedding_model, processor, best_threshold, label_encoder, model_type, test_cases):
-    """
-    Run a list of test cases and display results.
-    Each test case must be a dict with keys: 'claim1', 'claim2', 'expected'
-    """
+def run_tests(model, tokenizer, device, test_cases):
+    """Run test cases using the BERT model."""
     print("\n" + "="*70)
     print("RUNNING TEST CASES")
     print("="*70)
@@ -38,28 +34,17 @@ def run_tests(model, embedding_model, processor, best_threshold, label_encoder, 
             case["claim1"],
             case["claim2"],
             model,
-            embedding_model,
-            processor,
-            best_threshold,
-            label_encoder,
-            model_type,
+            tokenizer,
+            device
         )
-        print_pretty_prediction(
-            result,
-            test_case_num=i,
-            expected=case["expected"],
-            claim1=case["claim1"],
-            claim2=case["claim2"],
-            best_threshold=best_threshold
-        )
+        print_pretty_prediction(result, i, case["expected"], case["claim1"], case["claim2"])
 
         if result["predicted_label"] == case["expected"]:
             correct_predictions += 1
 
-    # Final summary
+    # Summary
     accuracy = (correct_predictions / len(test_cases)) * 100
     elapsed_time = time.time() - start_time
-
     print(f"\n{'='*70}")
     print("SUMMARY")
     print(f"{'='*70}")

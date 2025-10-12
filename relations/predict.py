@@ -1,7 +1,7 @@
 import torch
 from .embeddings import generate_embeddings
 
-def predict_relation(arg1, arg2, model, embedding_model, processor, best_threshold, label_encoder, model_type="pytorch"):
+def predict_relation_old(arg1, arg2, model, embedding_model, processor, best_threshold, label_encoder, model_type="pytorch"):
     embeddings = generate_embeddings(arg1, arg2, embedding_model, processor)
 
     if model_type == "pytorch":
