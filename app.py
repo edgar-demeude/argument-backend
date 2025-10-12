@@ -1,4 +1,9 @@
 import os
+
+cache_dir = "/tmp/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = cache_dir
+os.makedirs(cache_dir, exist_ok=True)
+
 import io
 import json
 import asyncio
@@ -15,9 +20,6 @@ from relations.predict_bert import predict_relation
 from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
 
 # -------------------- Config -------------------- #
-cache_dir = "/tmp/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = cache_dir
-os.makedirs(cache_dir, exist_ok=True)
 
 EXAMPLES_DIR = Path("./aba/exemples")
 SAMPLES_DIR = Path("./relations/exemples/samples")
@@ -51,22 +53,6 @@ def predict_text(arg1: str = Form(...), arg2: str = Form(...)):
     """Predict relation between two text arguments using BERT."""
     result = predict_relation(arg1, arg2, model, tokenizer, device)
     return {"arg1": arg1, "arg2": arg2, "relation": result}
-
-
-@app.post("/predict-csv")
-async def predict_csv(file: UploadFile):
-    """Predict relations for pairs of arguments from a CSV file (max 250 rows)."""
-    content = await file.read()
-    df = pd.read_csv(io.StringIO(content.decode("utf-8")), quotechar='"')
-    if len(df) > 250:
-        df = df.head(250)
-
-    results = []
-    for _, row in df.iterrows():
-        result = predict_relation(row["parent"], row["child"], model, tokenizer, device)
-        results.append({"parent": row["parent"], "child": row["child"], "relation": result})
-
-    return {"results": results, "note": "Limited to 250 rows max"}
 
 
 @app.post("/predict-csv-stream")
