@@ -1,96 +1,104 @@
 import os
+import io
+import json
+import asyncio
+from pathlib import Path
 
+import pandas as pd
+import torch
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
+from relations.predict_bert import predict_relation
+from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
+
+# -------------------- Config -------------------- #
 cache_dir = "/tmp/hf_cache"
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
 os.makedirs(cache_dir, exist_ok=True)
 
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-import pandas as pd
-from pathlib import Path
-import torch
-import io
-
-from relations.predict_bert import predict_relation
-
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
-# ABA imports
-from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
-
-app = FastAPI(title="Argument Mining API")
-
-# CORS middleware
-origins = [
-    "http://localhost:3000", 
-    "http://127.0.0.1:3000",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 EXAMPLES_DIR = Path("./aba/exemples")
 SAMPLES_DIR = Path("./relations/exemples/samples")
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load model at startup once
 model_name = "edgar-demeude/bert-argument"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
 model.to(device)
 
+# -------------------- App -------------------- #
+app = FastAPI(title="Argument Mining API")
 
+origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# -------------------- Endpoints -------------------- #
 @app.get("/")
 def root():
     return {"message": "Argument Mining API is running..."}
 
 
-# ---------------- BERT Prediction Endpoints ---------------- #
-
 @app.post("/predict-text")
 def predict_text(arg1: str = Form(...), arg2: str = Form(...)):
     """Predict relation between two text arguments using BERT."""
     result = predict_relation(arg1, arg2, model, tokenizer, device)
-    return {
-        "arg1": arg1,
-        "arg2": arg2,
-        "relation": result
-    }
+    return {"arg1": arg1, "arg2": arg2, "relation": result}
 
 
 @app.post("/predict-csv")
 async def predict_csv(file: UploadFile):
     """Predict relations for pairs of arguments from a CSV file (max 250 rows)."""
     content = await file.read()
-    # Utiliser StringIO + quotechar='"'
     df = pd.read_csv(io.StringIO(content.decode("utf-8")), quotechar='"')
-    
     if len(df) > 250:
         df = df.head(250)
 
     results = []
     for _, row in df.iterrows():
-        result = predict_relation(
-            row["parent"],
-            row["child"],
-            model,
-            tokenizer,
-            device
-        )
-        results.append({
-            "parent": row["parent"],
-            "child": row["child"],
-            "relation": result
-        })
+        result = predict_relation(row["parent"], row["child"], model, tokenizer, device)
+        results.append({"parent": row["parent"], "child": row["child"], "relation": result})
 
     return {"results": results, "note": "Limited to 250 rows max"}
+
+
+@app.post("/predict-csv-stream")
+async def predict_csv_stream(file: UploadFile):
+    """Stream CSV predictions progressively using SSE."""
+    content = await file.read()
+    df = pd.read_csv(io.StringIO(content.decode("utf-8")), quotechar='"')
+    if len(df) > 250:
+        df = df.head(250)
+
+    async def event_generator():
+        total = len(df)
+        completed = 0
+        for _, row in df.iterrows():
+            try:
+                result = predict_relation(row["parent"], row["child"], model, tokenizer, device)
+                completed += 1
+                payload = {
+                    "parent": row["parent"],
+                    "child": row["child"],
+                    "relation": result,
+                    "progress": completed / total
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+                # FORCER flush
+                await asyncio.sleep(0)
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e), 'parent': row.get('parent'), 'child': row.get('child')})}\n\n"
+                await asyncio.sleep(0)
+
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/samples")
@@ -106,19 +114,12 @@ def get_sample(filename: str):
         return {"error": "Sample not found"}
     return FileResponse(file_path, media_type="text/csv")
 
-# ---------------- ABA API ---------------- #
 
 @app.post("/aba-upload")
 async def aba_upload(file: UploadFile = File(...)):
-    """
-    Upload a .txt file containing an ABA framework definition
-    and return the generated ABA+ framework.
-    """
-    # Read file contents
     content = await file.read()
-    text = content.decode("utf-8")  # assume UTF-8 encoding
+    text = content.decode("utf-8")
 
-    # Build ABA framework
     aba_framework = build_aba_framework_from_text(text)
     aba_framework = prepare_aba_plus_framework(aba_framework)
     aba_framework.make_aba_plus()
@@ -134,14 +135,12 @@ async def aba_upload(file: UploadFile = File(...)):
 
 @app.get("/aba-examples")
 def list_aba_examples():
-    """Lists all sample files available on the server side."""
     examples = [f.name for f in EXAMPLES_DIR.glob("*.txt")]
     return {"examples": examples}
 
 
 @app.get("/aba-examples/{filename}")
 def get_aba_example(filename: str):
-    """Returns the contents of a specific ABA sample file."""
     file_path = EXAMPLES_DIR / filename
     if not file_path.exists() or not file_path.is_file():
         return {"error": "File not found"}
