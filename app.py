@@ -1,3 +1,9 @@
+import os
+
+cache_dir = "/tmp/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = cache_dir
+os.makedirs(cache_dir, exist_ok=True)
+
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
