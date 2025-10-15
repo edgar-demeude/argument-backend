@@ -107,6 +107,23 @@ async def aba_upload(file: UploadFile = File(...)):
     text = content.decode("utf-8")
 
     aba_framework = build_aba_framework_from_text(text)
+    aba_framework.generate_arguments()
+    aba_framework.generate_attacks()
+
+    results = {
+        "assumptions": [str(a) for a in aba_framework.assumptions],
+        "arguments": [str(arg) for arg in aba_framework.arguments],
+        "attacks": [str(att) for att in aba_framework.attacks],
+    }
+    return results
+
+
+@app.post("/aba-plus-upload")
+async def aba_upload(file: UploadFile = File(...)):
+    content = await file.read()
+    text = content.decode("utf-8")
+
+    aba_framework = build_aba_framework_from_text(text)
     aba_framework = prepare_aba_plus_framework(aba_framework)
     aba_framework.make_aba_plus()
 
