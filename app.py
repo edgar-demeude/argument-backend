@@ -11,18 +11,21 @@ from pathlib import Path
 
 import pandas as pd
 import torch
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 from relations.predict_bert import predict_relation
 from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
+from gradual.computations import compute_gradual_semantics
+from gradual.models import GradualInput, GradualOutput
 
 # -------------------- Config -------------------- #
 
-EXAMPLES_DIR = Path("./aba/exemples")
-SAMPLES_DIR = Path("./relations/exemples/samples")
+ABA_EXAMPLES_DIR = Path("./aba/examples")
+SAMPLES_DIR = Path("./relations/examples/samples")
+GRADUAL_EXAMPLES_DIR = Path("./gradual/examples")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model_name = "edgar-demeude/bert-argument"
@@ -47,6 +50,8 @@ app.add_middleware(
 def root():
     return {"message": "Argument Mining API is running..."}
 
+
+# --- Predictions --- #
 
 @app.post("/predict-text")
 def predict_text(arg1: str = Form(...), arg2: str = Form(...)):
@@ -101,6 +106,8 @@ def get_sample(filename: str):
     return FileResponse(file_path, media_type="text/csv")
 
 
+# --- ABA --- #
+
 @app.post("/aba-upload")
 async def aba_upload(file: UploadFile = File(...)):
     content = await file.read()
@@ -138,13 +145,67 @@ async def aba_upload(file: UploadFile = File(...)):
 
 @app.get("/aba-examples")
 def list_aba_examples():
-    examples = [f.name for f in EXAMPLES_DIR.glob("*.txt")]
+    examples = [f.name for f in ABA_EXAMPLES_DIR.glob("*.txt")]
     return {"examples": examples}
 
 
 @app.get("/aba-examples/{filename}")
 def get_aba_example(filename: str):
-    file_path = EXAMPLES_DIR / filename
+    file_path = ABA_EXAMPLES_DIR / filename
     if not file_path.exists() or not file_path.is_file():
         return {"error": "File not found"}
     return FileResponse(file_path, media_type="text/plain", filename=filename)
+
+
+# --- Gradual semantics --- #
+
+@app.post("/gradual", response_model=GradualOutput)
+def compute_gradual(input_data: GradualInput):
+    """API endpoint to compute Weighted h-Categorizer samples and convex hull."""
+    return compute_gradual_semantics(
+        A=input_data.A,
+        R=input_data.R,
+        n_samples=input_data.n_samples,
+        max_iter=input_data.max_iter
+    )
+
+
+@app.get("/gradual-examples")
+def list_gradual_examples():
+    """
+    List all available gradual semantics example files.
+    Each example must be a JSON file with structure:
+    {
+        "args": ["A", "B", "C"],
+        "relations": [["A", "B"], ["B", "C"]]
+    }
+    """
+    if not GRADUAL_EXAMPLES_DIR.exists():
+        return {"examples": []}
+
+    examples = []
+    for file in GRADUAL_EXAMPLES_DIR.glob("*.json"):
+        examples.append({
+            "name": file.stem,
+            "path": file.name,
+            "content": None
+        })
+    return {"examples": examples}
+
+
+@app.get("/gradual-examples/{example_name}")
+def get_gradual_example(example_name: str):
+    """
+    Return the content of a specific gradual example.
+    Example: GET /gradual-examples/simple.json
+    """
+    file_path = GRADUAL_EXAMPLES_DIR / example_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Example not found")
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = json.load(f)
+        return JSONResponse(content=content)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format in example file")
