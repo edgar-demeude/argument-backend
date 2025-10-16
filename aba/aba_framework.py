@@ -18,6 +18,7 @@ from .attacks import Attacks
 from collections import deque, defaultdict
 from itertools import combinations, product
 
+
 class ABAFramework:
     """
     Formal specification and implementation of Assumption-Based Argumentation (ABA) frameworks
@@ -36,7 +37,7 @@ class ABAFramework:
         reverse_attacks (set[tuple]): Reverse ABA+ attacks due to preferences.
         assumption_combinations (list[set[Literal]]): All subsets of base assumptions.
 
-        
+
     Mathematical foundation :
 
     An ABA framework is a tuple ⟨L, R, A, C⟩ where:
@@ -74,10 +75,13 @@ class ABAFramework:
         )
 
     def __str__(self):
-        language_str = ', '.join(str(l) for l in sorted(self.language, key=str))
+        language_str = ', '.join(str(l)
+                                 for l in sorted(self.language, key=str))
         rules_str = '\n'.join(str(r) for r in sorted(self.rules, key=str))
-        assumptions_str = ', '.join(str(a) for a in sorted(self.assumptions, key=str))
-        contraries_str = ', '.join(str(c) for c in sorted(self.contraries, key=str))
+        assumptions_str = ', '.join(str(a)
+                                    for a in sorted(self.assumptions, key=str))
+        contraries_str = ', '.join(str(c)
+                                   for c in sorted(self.contraries, key=str))
         result = [
             f"L = {{{language_str}}}",
             f"R = {{\n{rules_str}\n}}",
@@ -85,14 +89,16 @@ class ABAFramework:
             f"CONTRARIES = {{{contraries_str}}}"
         ]
         if self.preferences:
-            sorted_prefs = sorted(self.preferences.items(), key=lambda x: str(x[0]))
+            sorted_prefs = sorted(self.preferences.items(),
+                                  key=lambda x: str(x[0]))
             preferences_str = '\n'.join(
                 f"  {str(literal)} > {{{', '.join(str(p) for p in sorted(prefs, key=str))}}}"
                 for literal, prefs in sorted_prefs
             )
             result.append(f"PREFERENCES:\n{preferences_str}")
         if self.arguments:
-            arguments_str = '\n'.join(str(arg) for arg in sorted(self.arguments, key=str))
+            arguments_str = '\n'.join(str(arg)
+                                      for arg in sorted(self.arguments, key=str))
             result.append(f"ARGS:\n{arguments_str}")
         return '\n'.join(result)
 
@@ -181,10 +187,8 @@ class ABAFramework:
                     if arg1.claim == contrary.contrary_attacker and contrary.contraried_literal in arg2.leaves:
                         self.attacks.add(Attacks(arg1, arg2))
 
-
-
     # ------------------------- ABA Methods -------------------------
-    
+
     def transform_aba(self) -> None:
         """
         Transforms the ABA framework to ensure it is both non-circular and atomic.
@@ -225,7 +229,7 @@ class ABAFramework:
                 L = {a, b, x}
                 A = {a, b}
                 R = { r1: a <- x }
-            
+
             After _make_aba_atomic():
                 L = {a, b, x, xd, xnd}
                 A = {a, b, xd, xnd}
@@ -278,7 +282,7 @@ class ABAFramework:
             if rule.body and not all(lit in self.assumptions for lit in rule.body):
                 return False
         return True
-    
+
     def is_aba_circular(self) -> bool:
         """
         Checks if the ABA framework is circular by detecting cycles in the rule dependency graph.
@@ -330,7 +334,7 @@ class ABAFramework:
                 if has_cycle(lit, visited, set()):
                     return True  # Cycle found
         return False  # No cycles
-        
+
     def make_aba_not_circular(self) -> None:
         """
         Transforms the ABA framework to a non-circular one by renaming heads and bodies of rules.
@@ -364,7 +368,6 @@ class ABAFramework:
                     x1 <- a  
                     x  <- a  
         """
-    
 
         k = len(self.language) - len(self.assumptions)
         new_language = set(self.language)
@@ -392,10 +395,8 @@ class ABAFramework:
                     new_rule_name = f"{rule.rule_name}_{i+1}"
                     new_rules.add(Rule(new_rule_name, new_head, new_body))
 
-
         self.language = new_language
         self.rules = new_rules
-    
 
     # ------------------------- ABA+ Methods -------------------------
 
@@ -406,7 +407,7 @@ class ABAFramework:
         ABA+ extends classical ABA by incorporating preference information over assumptions directly into
         the attack relation, allowing for attack reversal when a target assumption is preferred over an
         attacking assumption.
-        
+
         Procedure:
             1. Ensures base_assumptions is set (preserves original assumptions before any transformation).
             2. Generates all possible subsets of base assumptions (the power set).
@@ -424,15 +425,17 @@ class ABAFramework:
             on the generated arguments to determine attacks between assumption sets.
         """
 
-
         if not getattr(self, "base_assumptions", None):
             self.base_assumptions = set(self.assumptions)
         self.assumption_combinations = self.generate_assumption_combinations()
-        print(f"Generated {len(self.assumption_combinations)} assumption combinations")
-        
+        print(
+            f"Generated {len(self.assumption_combinations)} assumption combinations")
+
         self.generate_normal_reverse_attacks()
-        print(f"Generated {len(self.normal_attacks)} normal attacks (assumption sets)")
-        print(f"Generated {len(self.reverse_attacks)} reverse attacks (assumption sets)")
+        print(
+            f"Generated {len(self.normal_attacks)} normal attacks (assumption sets)")
+        print(
+            f"Generated {len(self.reverse_attacks)} reverse attacks (assumption sets)")
 
     def generate_assumption_combinations(self) -> list[set[Literal]]:
         """
@@ -462,7 +465,8 @@ class ABAFramework:
             For n base assumptions, this generates 2^n combinations. The computational complexity
             can become significant for large assumption sets.
         """
-        source_assumptions = getattr(self, "base_assumptions", self.assumptions)
+        source_assumptions = getattr(
+            self, "base_assumptions", self.assumptions)
         all_combos = []
         for r in range(len(source_assumptions) + 1):
             for combo in combinations(source_assumptions, r):
@@ -555,27 +559,30 @@ class ABAFramework:
 
         for X in self.assumption_combinations:
             for Y in self.assumption_combinations:
-                    
+
                 args_X = self.arguments_from_assumptions(X)
                 args_Y = self.arguments_from_assumptions(Y)
                 if not args_X or not args_Y:
                     continue
-                
+
                 # Check for attacks from X to Y
                 for ax in args_X:
                     for ay in args_Y:
                         for contrary in self.contraries:
                             if ax.claim == contrary.contrary_attacker and contrary.contraried_literal in ay.leaves:
-                                reverse = any(self.is_preferred(y, x) for y in Y for x in X)
+                                reverse = any(self.is_preferred(y, x)
+                                              for y in Y for x in X)
                                 if reverse:
-                                    self.reverse_attacks.add((frozenset(Y), frozenset(X)))
+                                    self.reverse_attacks.add(
+                                        (frozenset(Y), frozenset(X)))
                                 else:
-                                    self.normal_attacks.add((frozenset(X), frozenset(Y)))
-        
+                                    self.normal_attacks.add(
+                                        (frozenset(X), frozenset(Y)))
+
         # Now add the subset attacks: if (ab) attacks c, then (abc) should also attack c
         additional_normal = set()
         additional_reverse = set()
-        
+
         # For normal attacks: if X attacks Y, then any superset of X should attack Y
         for X_att, Y_att in self.normal_attacks:
             X = set(X_att)
@@ -583,7 +590,7 @@ class ABAFramework:
             for Z in self.assumption_combinations:
                 if X.issubset(Z) and Z != X:
                     additional_normal.add((frozenset(Z), Y_att))
-        
+
         # For reverse attacks: if Y attacks X, then any superset of Y should attack X
         for Y_att, X_att in self.reverse_attacks:
             Y = set(Y_att)
@@ -591,7 +598,7 @@ class ABAFramework:
             for Z in self.assumption_combinations:
                 if Y.issubset(Z) and Z != Y:
                     additional_reverse.add((frozenset(Z), X_att))
-        
+
         # Add the additional attacks
         self.normal_attacks.update(additional_normal)
         self.reverse_attacks.update(additional_reverse)
