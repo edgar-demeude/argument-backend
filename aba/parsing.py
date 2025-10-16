@@ -1,6 +1,7 @@
 import re
 from typing import List, Tuple, Dict, Set
 
+
 def _parse_list(content: str) -> List[str]:
     """
     Parse a string representing a list of literals into a Python list of strings.
@@ -22,6 +23,7 @@ def _parse_list(content: str) -> List[str]:
     if not content:
         return []
     return [x.strip() for x in content.split(",") if x.strip()]
+
 
 def _parse_rule_line(line: str) -> Dict[str, Dict[str, Set[str]]]:
     """
@@ -45,14 +47,15 @@ def _parse_rule_line(line: str) -> Dict[str, Dict[str, Set[str]]]:
         return {r_id: {head: body_atoms}}
     return {}
 
+
 def _parse_pref_line(line: str) -> Dict[str, Set[str]]:
     """
     Parse a preference line of the form:
     - PREF: a,b > c,d > e
     - PREF: a,b > c and a > d
-    
+
     Supports multiple chains joined by "and".
-    
+
     Returns:
         Dict[str, Set[str]]: Dictionary mapping each element to all elements
                              that come after it in the preference chain(s).
@@ -82,6 +85,7 @@ def _parse_pref_line(line: str) -> Dict[str, Set[str]]:
                     pref_dict[literal].update(less_preferred)
 
     return pref_dict
+
 
 def parse_doc(path: str) -> Tuple[
     List[str],
@@ -120,13 +124,13 @@ def parse_doc(path: str) -> Tuple[
     contraries: List[Tuple[str, str]] = []
     rules: List[Dict[str, Dict[str, Set[str]]]] = []
     preferences: List[Dict[str, Set[str]]] = []
-    
+
     with open(path, "r") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            
+
             if line.startswith("L:"):
                 language = _parse_list(line.split(":", 1)[1])
             elif line.startswith("A:"):
@@ -143,12 +147,13 @@ def parse_doc(path: str) -> Tuple[
                 pref_dict = _parse_pref_line(line)
                 if pref_dict:
                     preferences.append(pref_dict)
-    
+
     return language, assumptions, contraries, rules, preferences
 
 
 if __name__ == "__main__":
-    language, assumptions, contraries, rules, preferences = parse_doc("./backend/data/simple_plus2AND.txt")
+    language, assumptions, contraries, rules, preferences = parse_doc(
+        "./backend/data/simple_plus2AND.txt")
     print("Language:", language)
     print("Assumptions:", assumptions)
     print("Contraries:", contraries)

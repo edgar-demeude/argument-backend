@@ -10,6 +10,7 @@ Features:
 - Provides visualization of attack graphs using PyVis.
 """
 
+from copy import deepcopy
 from .argument import Argument
 from .contrary import Contrary
 from .literal import Literal
@@ -189,7 +190,7 @@ class ABAFramework:
 
     # ------------------------- ABA Methods -------------------------
 
-    def transform_aba(self) -> None:
+    def transform_aba(self) -> "ABAFramework":
         """
         Transforms the ABA framework to ensure it is both non-circular and atomic.
 
@@ -204,12 +205,15 @@ class ABAFramework:
         print("\n ------- Transforming ABA framework -------\n")
         if self.is_aba_circular():
             print("The ABA Framework is circular\n")
-            self.make_aba_not_circular()
+            return self.make_aba_not_circular()
         elif not self.is_aba_atomic():
             print("The ABA Framework is not atomic\n")
-            self.make_aba_atomic()
+            return self.make_aba_atomic()
+        else:
+            print("The ABA Framework is already non-circular and atomic\n")
+            return deepcopy(self)
 
-    def make_aba_atomic(self) -> None:
+    def make_aba_atomic(self) -> "ABAFramework":
         """
         Transforms the ABA framework into an atomic one.
 
@@ -236,6 +240,8 @@ class ABAFramework:
                 R = { a <- xd }
                 Contraries = { xd̄ = xnd, xnd̄ = x }
         """
+        new_framework = deepcopy(self)
+
         new_language = set(self.language)
         new_assumptions = set(self.assumptions)
         new_rules = set()
@@ -265,10 +271,16 @@ class ABAFramework:
             new_rules.add(Rule(rule.rule_name, rule.head, new_body))
 
         # Step 3: Update framework
-        self.language = new_language
-        self.assumptions = new_assumptions
-        self.rules = new_rules
-        self.contraries = new_contraries
+        # self.language = new_language
+        # self.assumptions = new_assumptions
+        # self.rules = new_rules
+        # self.contraries = new_contraries
+        new_framework.language = new_language
+        new_framework.assumptions = new_assumptions
+        new_framework.rules = new_rules
+        new_framework.contraries = new_contraries
+
+        return new_framework
 
     def is_aba_atomic(self) -> bool:
         """
@@ -335,7 +347,7 @@ class ABAFramework:
                     return True  # Cycle found
         return False  # No cycles
 
-    def make_aba_not_circular(self) -> None:
+    def make_aba_not_circular(self) -> "ABAFramework":
         """
         Transforms the ABA framework to a non-circular one by renaming heads and bodies of rules.
 
@@ -368,7 +380,7 @@ class ABAFramework:
                     x1 <- a  
                     x  <- a  
         """
-
+        new_copy = deepcopy(self)
         k = len(self.language) - len(self.assumptions)
         new_language = set(self.language)
         new_rules = set()
@@ -395,8 +407,12 @@ class ABAFramework:
                     new_rule_name = f"{rule.rule_name}_{i+1}"
                     new_rules.add(Rule(new_rule_name, new_head, new_body))
 
-        self.language = new_language
-        self.rules = new_rules
+                # self.language = new_language
+                # self.rules = new_rules
+        new_copy.language = new_language
+        new_copy.rules = new_rules
+
+        return new_copy
 
     # ------------------------- ABA+ Methods -------------------------
 
