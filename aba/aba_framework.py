@@ -297,56 +297,67 @@ class ABAFramework:
 
     def is_aba_circular(self) -> bool:
         """
-        Checks if the ABA framework is circular by detecting cycles in the rule dependency graph.
+        Detects circularity in the ABA framework according to the definition:
 
-        Returns:
-            bool: True if the framework is circular (i.e., contains a cycle), False otherwise.
+            A framework is circular iff there exists a path between two distinct
+            vertices (rule applications) that have the same label.
 
-        Procedure:
-            - The dependency graph is constructed where each node is a literal.
-            - For each rule, an edge is added from every literal in the rule's body to the rule's head.
-            - A cycle in this graph means there is a sequence of rules such that a literal can be derived from itself,
-              directly or indirectly, which is the definition of circularity in ABA frameworks.
-            - The function uses depth-first search (DFS) to detect cycles in the graph.
+        This means:
+            - A single rule like x <- x alone is NOT circular.
+            - Two rules like x <- x and x <- a ARE circular,
+            because there exist two distinct derivations for x
+            where one depends on the other.
+
         """
-        # Build adjacency list: for each literal, store the set of literals it can reach via rules
+
+        # Build adjacency: body_lit -> head
         adj = {lit: set() for lit in self.language}
         for rule in self.rules:
             for body_lit in rule.body:
-                if body_lit != rule.head:
-                    adj[body_lit].add(rule.head)
+                adj[body_lit].add(rule.head)
 
-        def has_cycle(lit, visited, stack):
-            """
-            Helper function to perform DFS and detect cycles.
+        # Map labels -> rules that produce them
+        label_sources = {}
+        for rule in self.rules:
+            head_label = str(rule.head)
+            if head_label not in label_sources:
+                label_sources[head_label] = []
+            label_sources[head_label].append(rule)
 
-            Args:
-                lit: The current literal being visited.
-                visited: Set of literals that have been fully explored.
-                stack: Set of literals in the current DFS path (recursion stack).
-
-            Returns:
-                True if a cycle is detected starting from 'lit', False otherwise.
-            """
-            visited.add(lit)
-            stack.add(lit)
-            for neighbor in adj.get(lit, []):
-                if neighbor not in visited:
-                    if has_cycle(neighbor, visited, stack):
+        def is_reachable(src_lit, target_lit, visited=None):
+            """DFS reachability helper for debugging."""
+            if visited is None:
+                visited = set()
+            if src_lit == target_lit:
+                return True
+            visited.add(src_lit)
+            for nxt in adj.get(src_lit, []):
+                if nxt not in visited:
+                    if is_reachable(nxt, target_lit, visited):
                         return True
-                elif neighbor in stack:
-                    # Found a back edge, which means a cycle exists
-                    return True
-            stack.remove(lit)
             return False
 
-        visited = set()
-        # Check for cycles starting from each literal in the language
-        for lit in self.language:
-            if lit not in visited:
-                if has_cycle(lit, visited, set()):
-                    return True  # Cycle found
-        return False  # No cycles
+        for body, heads in adj.items():
+            print(f"  {body} -> {', '.join(str(h) for h in heads)}")
+
+        circular_cases = []
+
+        for label, rules_for_label in label_sources.items():
+            if len(rules_for_label) < 2:
+                continue  # only one rule derives this label
+            for r1 in rules_for_label:
+                for r2 in rules_for_label:
+                    if r1 is r2:
+                        continue
+                    for body_lit in r1.body:
+                        if is_reachable(body_lit, r2.head):
+                            circular_cases.append((label, r1, r2, body_lit))
+                            
+        if not circular_cases:
+            return False
+
+        return True
+
 
     def make_aba_not_circular(self) -> "ABAFramework":
         """
