@@ -313,7 +313,8 @@ class ABAFramework:
         adj = {lit: set() for lit in self.language}
         for rule in self.rules:
             for body_lit in rule.body:
-                adj[body_lit].add(rule.head)
+                if body_lit != rule.head:
+                    adj[body_lit].add(rule.head)
 
         def has_cycle(lit, visited, stack):
             """
