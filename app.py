@@ -1,25 +1,24 @@
+from gradual.models import GradualInput, GradualOutput
+# from gradual.computations import compute_gradual_semantics
+from gradual.computations import compute_gradual_space
+from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
+from relations.predict_bert import predict_relation
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import torch
+import pandas as pd
+from pathlib import Path
+import asyncio
+import json
+import io
 import os
 
 cache_dir = "/tmp/hf_cache"
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
 os.makedirs(cache_dir, exist_ok=True)
 
-import io
-import json
-import asyncio
-from pathlib import Path
-
-import pandas as pd
-import torch
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
-from relations.predict_bert import predict_relation
-from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
-from gradual.computations import compute_gradual_semantics
-from gradual.models import GradualInput, GradualOutput
 
 # -------------------- Config -------------------- #
 
@@ -46,6 +45,8 @@ app.add_middleware(
 )
 
 # -------------------- Endpoints -------------------- #
+
+
 @app.get("/")
 def root():
     return {"message": "Argument Mining API is running..."}
@@ -73,7 +74,8 @@ async def predict_csv_stream(file: UploadFile):
         completed = 0
         for _, row in df.iterrows():
             try:
-                result = predict_relation(row["parent"], row["child"], model, tokenizer, device)
+                result = predict_relation(
+                    row["parent"], row["child"], model, tokenizer, device)
                 completed += 1
                 payload = {
                     "parent": row["parent"],
@@ -87,7 +89,6 @@ async def predict_csv_stream(file: UploadFile):
             except Exception as e:
                 yield f"data: {json.dumps({'error': str(e), 'parent': row.get('parent'), 'child': row.get('child')})}\n\n"
                 await asyncio.sleep(0)
-
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -159,14 +160,37 @@ def get_aba_example(filename: str):
 
 # --- Gradual semantics --- #
 
+# @app.post("/gradual", response_model=GradualOutput)
+# def compute_gradual(input_data: GradualInput):
+#     """API endpoint to compute Weighted h-Categorizer samples and convex hull."""
+#     return compute_gradual_semantics(
+#         A=input_data.A,
+#         R=input_data.R,
+#         n_samples=input_data.n_samples,
+#         max_iter=input_data.max_iter
+#     )
+
 @app.post("/gradual", response_model=GradualOutput)
 def compute_gradual(input_data: GradualInput):
-    """API endpoint to compute Weighted h-Categorizer samples and convex hull."""
-    return compute_gradual_semantics(
-        A=input_data.A,
+    """
+    API endpoint to compute Weighted h-Categorizer samples
+    and their convex hull (acceptability degree space).
+    """
+    num_args, hull_volume, hull_area, hull_points, samples, axes = compute_gradual_space(
+        num_args=input_data.num_args,
         R=input_data.R,
         n_samples=input_data.n_samples,
-        max_iter=input_data.max_iter
+        axes=input_data.axes,
+        controlled_args=input_data.controlled_args,
+    )
+
+    return GradualOutput(
+        num_args=num_args,
+        hull_volume=hull_volume,
+        hull_area=hull_area,
+        hull_points=hull_points,
+        samples=samples,
+        axes=axes,
     )
 
 
@@ -176,8 +200,10 @@ def list_gradual_examples():
     List all available gradual semantics example files.
     Each example must be a JSON file with structure:
     {
-        "args": ["A", "B", "C"],
-        "relations": [["A", "B"], ["B", "C"]]
+        # "args": ["A", "B", "C"],
+        # "relations": [["A", "B"], ["B", "C"]]
+        "num_args": 3,
+        "R": [["A", "B"], ["B", "C"], ["C", "A"]],
     }
     """
     if not GRADUAL_EXAMPLES_DIR.exists():
@@ -196,7 +222,7 @@ def list_gradual_examples():
 @app.get("/gradual-examples/{example_name}")
 def get_gradual_example(example_name: str):
     """
-    Return the content of a specific gradual example.
+    Return the content of a specific gradual example file.
     Example: GET /gradual-examples/simple.json
     """
     file_path = GRADUAL_EXAMPLES_DIR / example_name
@@ -208,4 +234,5 @@ def get_gradual_example(example_name: str):
             content = json.load(f)
         return JSONResponse(content=content)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON format in example file")
+        raise HTTPException(
+            status_code=400, detail="Invalid JSON format in example file")

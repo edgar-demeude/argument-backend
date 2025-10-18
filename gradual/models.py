@@ -1,5 +1,6 @@
-from pydantic import BaseModel
-from typing import List, Tuple, Optional
+from pydantic import BaseModel, Field
+from typing import List, Tuple, Dict, Optional
+
 
 class GradualInput(BaseModel):
     """
@@ -26,10 +27,21 @@ class GradualInput(BaseModel):
           "max_iter": 1000
         }
     """
-    A: List[str]
-    R: List[Tuple[str, str]]
-    n_samples: int = 1000
-    max_iter: int = 1000
+    num_args: int = Field(..., ge=1, le=10,
+                          description="Number of arguments (|A|)")
+
+    R: List[Tuple[str, str]
+            ] = Field(..., description="Attack relations (A->B format)")
+
+    n_samples: int = Field(
+        1000, ge=10, description="Number of samples for convex hull computation")
+
+    axes: Optional[List[str]] = Field(
+        None, description="Chosen arguments for 3D plot axes (X,Y,Z)")
+
+    controlled_args: Optional[Dict[str, float]] = Field(
+        None, description="Values for non-axis arguments")
+
 
 class GradualOutput(BaseModel):
     """
@@ -72,3 +84,4 @@ class GradualOutput(BaseModel):
     hull_area: Optional[float]
     hull_points: List[List[float]]
     samples: List[List[float]]
+    axes: Optional[List[str]] = None

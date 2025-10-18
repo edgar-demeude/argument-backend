@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def build_att(A, R):
     """Builds a dictionary listing attackers for each argument."""
     att_list = {a: [] for a in A}
@@ -27,21 +28,3 @@ def h_categorizer(A, R, w, max_iter, epsi=1e-4):
             break
 
     return hc
-
-
-def dict_to_vector(A, d):
-    """Converts a dictionary {arg: value} into a numpy vector following the order of A."""
-    return np.array([d[a] for a in A], dtype=float)
-
-
-def sample_and_compute_X(A, R, epsilon=1e-4, max_iter=1000, n_samples=10000, seed=42):
-    """Generates n_samples random weight vectors and computes corresponding h-Categorizer results."""
-    rng = np.random.default_rng(seed)
-    X = np.zeros((n_samples, len(A)), dtype=float)
-
-    for i in range(n_samples):
-        w = dict(zip(A, rng.random(len(A))))
-        HC = h_categorizer(A, R, w, max_iter, epsilon)
-        X[i, :] = dict_to_vector(A, HC)
-
-    return X
