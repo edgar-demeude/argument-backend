@@ -1,3 +1,9 @@
+import os
+
+cache_dir = "/tmp/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = cache_dir
+os.makedirs(cache_dir, exist_ok=True)
+
 from gradual.models import GradualInput, GradualOutput
 # from gradual.computations import compute_gradual_semantics
 from gradual.computations import compute_gradual_space
@@ -13,11 +19,6 @@ from pathlib import Path
 import asyncio
 import json
 import io
-import os
-
-cache_dir = "/tmp/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = cache_dir
-os.makedirs(cache_dir, exist_ok=True)
 
 
 # -------------------- Config -------------------- #
