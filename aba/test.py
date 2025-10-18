@@ -64,7 +64,7 @@ def main():
     print("=" * 50)
 
     # Build framework from the given input specification file
-    aba_framework = build_aba_framework("aba\examples\circular.txt")
+    aba_framework = build_aba_framework("aba\examples\exemple.txt")
     print(f"\n ------- Original ABA framework -------\n{aba_framework}")
 
     base_framework = deepcopy(aba_framework)

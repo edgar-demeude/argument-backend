@@ -352,12 +352,11 @@ class ABAFramework:
                     for body_lit in r1.body:
                         if is_reachable(body_lit, r2.head):
                             circular_cases.append((label, r1, r2, body_lit))
-                            
+
         if not circular_cases:
             return False
 
         return True
-
 
     def make_aba_not_circular(self) -> "ABAFramework":
         """
