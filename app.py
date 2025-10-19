@@ -1,15 +1,24 @@
-import io
-import json
-import asyncio
-from pathlib import Path
-import pandas as pd
-import torch
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from relations.predict_bert import predict_relation
+import os
+
+cache_dir = "/tmp/hf_cache"
+os.environ["TRANSFORMERS_CACHE"] = cache_dir
+os.makedirs(cache_dir, exist_ok=True)
+
+from gradual.models import GradualInput, GradualOutput
+# from gradual.computations import compute_gradual_semantics
+from gradual.computations import compute_gradual_space
 from aba.aba_builder import prepare_aba_plus_framework, build_aba_framework_from_text
+from relations.predict_bert import predict_relation
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+import torch
+import pandas as pd
+from pathlib import Path
+import asyncio
+import json
+import io
 from aba.models import (
     RuleDTO,
     FrameworkSnapshot,
@@ -18,51 +27,11 @@ from aba.models import (
     ABAPlusDTO,
     MetaInfo,
 )
-from gradual.computations import compute_gradual_space
-from gradual.models import GradualInput, GradualOutput
-import os
 from copy import deepcopy
 from datetime import datetime
 
-cache_dir = "/tmp/hf_cache"
-os.environ["TRANSFORMERS_CACHE"] = cache_dir
-os.makedirs(cache_dir, exist_ok=True)
-
-
-def _make_snapshot(fw) -> FrameworkSnapshot:
-    return FrameworkSnapshot(
-        language=[str(l) for l in sorted(fw.language, key=str)],
-        assumptions=[str(a) for a in sorted(fw.assumptions, key=str)],
-        rules=[
-            RuleDTO(
-                id=r.rule_name,
-                head=str(r.head),
-                body=[str(b) for b in sorted(r.body, key=str)],
-            )
-            for r in sorted(fw.rules, key=lambda r: r.rule_name)
-        ],
-        contraries=[
-            (str(c.contraried_literal), str(c.contrary_attacker))
-            for c in sorted(fw.contraries, key=str)
-        ],
-        preferences={
-            str(k): [str(v) for v in sorted(vals, key=str)]
-            for k, vals in (fw.preferences or {}).items()
-        } if getattr(fw, "preferences", None) else None,
-    )
-
-
-def _format_set(s) -> str:
-    # s may be a Python set/frozenset of Literal or strings.
-    try:
-        items = sorted([str(x) for x in s], key=str)
-    except Exception:
-        # fallback if s is already a string like "{a,b}"
-        return str(s)
-    return "{" + ",".join(items) + "}"
 
 # -------------------- Config -------------------- #
-
 
 ABA_EXAMPLES_DIR = Path("./aba/examples")
 SAMPLES_DIR = Path("./relations/examples/samples")
@@ -149,229 +118,298 @@ def get_sample(filename: str):
     return FileResponse(file_path, media_type="text/csv")
 
 
+
 # --- ABA --- #
 
-@app.post("/aba-upload")
-async def aba_upload(file: UploadFile = File(...)):
-    """
-    Handle classical ABA generation.
-    Returns:
-        - original_framework: before transformations
-        - final_framework: after transformations
-        - transformations: steps applied (non-circular / atomic)
-        - arguments, attacks
-        - empty aba_plus section
-    """
-    content = await file.read()
-    text = content.decode("utf-8")
+def _make_snapshot(fw) -> FrameworkSnapshot:
+    return FrameworkSnapshot(
+        language=[str(l) for l in sorted(fw.language, key=str)],
+        assumptions=[str(a) for a in sorted(fw.assumptions, key=str)],
+        rules=[
+            RuleDTO(
+                id=r.rule_name,
+                head=str(r.head),
+                body=[str(b) for b in sorted(r.body, key=str)],
+            )
+            for r in sorted(fw.rules, key=lambda r: r.rule_name)
+        ],
+        contraries=[
+            (str(c.contraried_literal), str(c.contrary_attacker))
+            for c in sorted(fw.contraries, key=str)
+        ],
+        preferences={
+            str(k): [str(v) for v in sorted(vals, key=str)]
+            for k, vals in (fw.preferences or {}).items()
+        } if getattr(fw, "preferences", None) else None,
+    )
 
-    # === 1. Build original ABA framework ===
+
+def _format_set(s) -> str:
+    # s may be a Python set/frozenset of Literal or strings.
+    try:
+        items = sorted([str(x) for x in s], key=str)
+    except Exception:
+        # fallback if s is already a string like "{a,b}"
+        return str(s)
+    return "{" + ",".join(items) + "}"
+
+
+async def _process_aba_framework(
+    text: str,
+    enable_aba_plus: bool = False,
+) -> dict:
+    """
+    Core processing logic for ABA frameworks.
+    
+    Args:
+        text: The uploaded file content as text
+        enable_aba_plus: If True, compute ABA+ elements
+        
+    Returns:
+        Complete response with before/after snapshots and all computations
+    """
+    # === 1. Build original framework ===
     base_framework = build_aba_framework_from_text(text)
+    base_framework.generate_arguments()
+    base_framework.generate_attacks()
     original_snapshot = _make_snapshot(base_framework)
 
-    # === 2. Transform the framework ===
-    copy_framework = deepcopy(base_framework)
-    transformed_framework = copy_framework.transform_aba()
+    # --- Classical (argument-level) data ---
+    original_arguments = [str(arg) for arg in sorted(base_framework.arguments, key=str)]
+    original_attacks = [str(att) for att in sorted(base_framework.attacks, key=str)]
+    original_reverse_attacks = []
 
-    was_circular = base_framework.is_aba_circular()
-    was_atomic = base_framework.is_aba_atomic()
-
+    # === 2. Transform framework ===
     transformed_framework = deepcopy(base_framework).transform_aba()
+    transformations = _detect_transformations(base_framework, transformed_framework)
 
-    # Detect transformation type
-    transformations: list[TransformationStep] = []
-    if transformed_framework.language != base_framework.language or transformed_framework.rules != base_framework.rules:
-        # Some transformation happened
-        if was_circular:
-            transformations.append(
-                TransformationStep(
-                    step="non_circular",
-                    applied=True,
-                    reason="The framework contained circular dependencies.",
-                    description="Transformed into a non-circular version.",
-                    result_snapshot=_make_snapshot(transformed_framework),
-                )
-            )
-        elif not was_atomic:
-            transformations.append(
-                TransformationStep(
-                    step="atomic",
-                    applied=True,
-                    reason="The framework contained rules with non-assumption bodies.",
-                    description="Transformed into an atomic version.",
-                    result_snapshot=_make_snapshot(transformed_framework),
-                )
-            )
-    else:
-        # No transformation
-        transformations.append(
-            TransformationStep(
-                step="none",
-                applied=False,
-                reason="The framework was already non-circular and atomic.",
-                description="No transformation applied.",
-                result_snapshot=None,
-            )
+    # --- Initialize containers ---
+    original_assumption_sets = []
+    final_assumption_sets = []
+    original_aba_plus_attacks = []
+    final_aba_plus_attacks = []
+    original_reverse_attacks = []
+    final_reverse_attacks = []
+    warnings = []
+
+    # === 3. ABA+ computations ===
+    if enable_aba_plus:
+        # --- ABA+ on original framework ---
+        fw_plus_original = prepare_aba_plus_framework(deepcopy(base_framework))
+        fw_plus_original.generate_arguments()
+        fw_plus_original.generate_attacks()
+        fw_plus_original.make_aba_plus()
+
+        original_assumption_sets = sorted(
+            [_format_set(s) for s in getattr(fw_plus_original, "assumption_combinations", [])],
+            key=lambda x: (len(x), x),
         )
 
-    # === 3. Generate arguments and attacks on transformed ===
+        original_aba_plus_attacks = [
+            f"{_format_set(src)} → {_format_set(dst)}"
+            for (src, dst) in sorted(
+                getattr(fw_plus_original, "normal_attacks", []),
+                key=lambda p: (str(p[0]), str(p[1])),
+            )
+        ]
+
+        original_reverse_attacks = [
+            f"{_format_set(src)} → {_format_set(dst)}"
+            for (src, dst) in sorted(
+                getattr(fw_plus_original, "reverse_attacks", []),
+                key=lambda p: (str(p[0]), str(p[1])),
+            )
+        ]
+
+        # --- Ensure transformed framework is consistent before ABA+ ---
+        transformed_framework.generate_arguments()
+        transformed_framework.generate_attacks()
+
+        # --- Compute ABA+ on transformed framework ---
+        fw_plus_transformed = prepare_aba_plus_framework(deepcopy(transformed_framework))
+        fw_plus_transformed.generate_arguments()
+        fw_plus_transformed.generate_attacks()
+        fw_plus_transformed.make_aba_plus()
+
+        final_assumption_sets = sorted(
+            [_format_set(s) for s in getattr(fw_plus_transformed, "assumption_combinations", [])],
+            key=lambda x: (len(x), x),
+        )
+
+        # Debug sanity checks
+        print("DEBUG: fw_plus_transformed.assumptions =", getattr(fw_plus_transformed, "assumptions", []))
+        print("DEBUG: fw_plus_transformed.normal_attacks =", getattr(fw_plus_transformed, "normal_attacks", []))
+
+        final_aba_plus_attacks = [
+            f"{_format_set(src)} → {_format_set(dst)}"
+            for (src, dst) in sorted(
+                getattr(fw_plus_transformed, "normal_attacks", []),
+                key=lambda p: (str(p[0]), str(p[1])),
+            )
+        ]
+
+        final_reverse_attacks = [
+            f"{_format_set(src)} → {_format_set(dst)}"
+            for (src, dst) in sorted(
+                getattr(fw_plus_transformed, "reverse_attacks", []),
+                key=lambda p: (str(p[0]), str(p[1])),
+            )
+        ]
+
+        warnings = _validate_aba_plus_framework(fw_plus_transformed)
+    else:
+        warnings = _validate_framework(transformed_framework)
+
+    # === 4. Classical ABA computations (arguments + attacks) ===
+    base_framework.generate_arguments()
+    base_framework.generate_attacks()
+
     transformed_framework.generate_arguments()
     transformed_framework.generate_attacks()
 
+    original_arguments = [str(arg) for arg in sorted(base_framework.arguments, key=str)]
+    original_arguments_attacks = [str(att) for att in sorted(base_framework.attacks, key=str)]
+
+    final_arguments = [str(arg) for arg in sorted(transformed_framework.arguments, key=str)]
+    final_arguments_attacks = [str(att) for att in sorted(transformed_framework.attacks, key=str)]
+
+    # === 5. Snapshots ===
+    original_snapshot = _make_snapshot(base_framework)
     final_snapshot = _make_snapshot(transformed_framework)
 
-    # === 4. Build response model ===
-    response = ABAApiResponseModel(
-        meta=MetaInfo(
-            request_id=f"req-{datetime.utcnow().timestamp()}",
-            timestamp=datetime.utcnow().isoformat(),
-            transformed=any(t.applied for t in transformations),
-            transformations_applied=[
-                t.step for t in transformations if t.applied
+    # === 6. Build response ===
+    response = {
+        "meta": {
+            "request_id": f"req-{datetime.utcnow().timestamp()}",
+            "timestamp": datetime.utcnow().isoformat(),
+            "transformed": any(t["applied"] for t in [_transform_to_dict(t) for t in transformations]),
+            "transformations_applied": [
+                t["step"] for t in [_transform_to_dict(t) for t in transformations] if t["applied"]
             ],
-            warnings=[],
-            errors=[],
-        ),
-        original_framework=original_snapshot,
-        transformations=transformations,
-        final_framework=final_snapshot,
-        arguments=[str(arg) for arg in sorted(
-            transformed_framework.arguments, key=str)],
-        attacks=[str(att)
-                 for att in sorted(transformed_framework.attacks, key=str)],
-        aba_plus=ABAPlusDTO(
-            assumption_combinations=[],
-            normal_attacks=[],
-            reverse_attacks=[],
-        ),
-    )
+            "warnings": warnings,
+            "errors": [],
+        },
+        "original_framework": {
+            "framework": original_snapshot,
+            "arguments": original_arguments,
+            "arguments_attacks": original_arguments_attacks,
+            "normal_attacks": original_aba_plus_attacks if enable_aba_plus else [],
+            "reverse_attacks": original_reverse_attacks if enable_aba_plus else [],
+            "assumption_sets": original_assumption_sets if enable_aba_plus else [],
+        },
+        "transformations": [_transform_to_dict(t) for t in transformations],
+        "final_framework": {
+            "framework": final_snapshot,
+            "arguments": final_arguments,
+            "arguments_attacks": final_arguments_attacks,
+            "normal_attacks": final_aba_plus_attacks if enable_aba_plus else [],
+            "reverse_attacks": final_reverse_attacks if enable_aba_plus else [],
+            "assumption_sets": final_assumption_sets if enable_aba_plus else [],
+        },
+    }
 
     return response
 
 
-@app.post("/aba-plus-upload", response_model=ABAApiResponseModel)
-async def aba_plus_upload(file: UploadFile = File(...)):
+def _detect_transformations(
+    base_framework,
+    transformed_framework,
+) -> list:
     """
-    Handle ABA+ generation.
-    Returns:
-      - original_framework / final_framework with snapshots
-      - transformations applied (non_circular / atomic)
-      - arguments, classical attacks (from transformed framework)
-      - aba_plus: assumption_combinations, normal_attacks, reverse_attacks (string lists)
+    Detect and describe which transformations were applied.
+    """
+    transformations = []
+    
+    if transformed_framework.language == base_framework.language and \
+       transformed_framework.rules == base_framework.rules:
+        # No transformation needed
+        transformations.append({
+            "step": "none",
+            "applied": False,
+            "reason": "The framework was already non-circular and atomic.",
+            "description": "No transformation applied.",
+            "result_snapshot": None,
+        })
+        return transformations
+    
+    # Determine transformation type
+    was_circular = base_framework.is_aba_circular()
+    was_atomic = base_framework.is_aba_atomic()
+    
+    step_name = "non_circular" if was_circular else "atomic"
+    reason = "circular dependencies" if was_circular else "non-atomic rules"
+    
+    transformations.append({
+        "step": step_name,
+        "applied": True,
+        "reason": f"The framework contained {reason}.",
+        "description": f"Transformed into a {step_name.replace('_', '-')} version.",
+        "result_snapshot": _make_snapshot(transformed_framework),
+    })
+    
+    return transformations
+
+
+def _transform_to_dict(t):
+    """Convert TransformationStep to dict if needed."""
+    if isinstance(t, dict):
+        return t
+    return {
+        "step": t.step,
+        "applied": t.applied,
+        "reason": t.reason,
+        "description": t.description,
+        "result_snapshot": t.result_snapshot,
+    }
+
+
+def _validate_framework(framework) -> list[str]:
+    """
+    Validate framework and return any warnings.
+    """
+    warnings = []
+    
+    if hasattr(framework, "preferences") and framework.preferences:
+        all_assumptions = {str(a) for a in framework.assumptions}
+        pref_keys = {str(k) for k in framework.preferences.keys()}
+        
+        if not pref_keys.issubset(all_assumptions):
+            warnings.append(
+                "Incomplete preference relation: not all assumptions appear in the preference mapping."
+            )
+    
+    return warnings
+
+
+def _validate_aba_plus_framework(framework) -> list[str]:
+    """
+    Validate ABA+ framework and return any warnings.
+    """
+    return _validate_framework(framework)
+
+
+@app.post("/aba-upload")
+async def aba_upload(file: UploadFile = File(...)):
+    """
+    Handle classical ABA framework generation.
+    
+    Returns: original & final frameworks with arguments and attacks (no ABA+ data)
     """
     content = await file.read()
     text = content.decode("utf-8")
+    return await _process_aba_framework(text, enable_aba_plus=False)
 
-    # 1) Build base framework + original snapshot
-    base_fw = build_aba_framework_from_text(text)
-    original_snapshot = _make_snapshot(base_fw)
 
-    was_circular = base_fw.is_aba_circular()
-    was_atomic = base_fw.is_aba_atomic()
-
-    # 2) Transform (deepcopy → transform_aba)
-    transformed = deepcopy(base_fw).transform_aba()
-
-    # Track transformation step(s)
-    transformations: list[TransformationStep] = []
-    if transformed.language != base_fw.language or transformed.rules != base_fw.rules:
-        if was_circular:
-            transformations.append(
-                TransformationStep(
-                    step="non_circular",
-                    applied=True,
-                    reason="The framework contained circular dependencies.",
-                    description="Transformed into a non-circular version.",
-                    result_snapshot=_make_snapshot(transformed),
-                )
-            )
-        elif not was_atomic:
-            transformations.append(
-                TransformationStep(
-                    step="atomic",
-                    applied=True,
-                    reason="The framework contained non-atomic rules.",
-                    description="Transformed into an atomic version.",
-                    result_snapshot=_make_snapshot(transformed),
-                )
-            )
-    else:
-        transformations.append(
-            TransformationStep(
-                step="none",
-                applied=False,
-                reason="The framework was already non-circular and atomic.",
-                description="No transformation applied.",
-                result_snapshot=None,
-            )
-        )
-
-    # 3) Prepare for ABA+ (on the transformed copy) and compute
-    # generates arguments + classical attacks
-    fw_plus = prepare_aba_plus_framework(transformed)
-    fw_plus.make_aba_plus()  # fills assumption_combinations, normal_attacks, reverse_attacks
-
-    warnings = []
-    if fw_plus.preferences:
-        all_assumpptions = {str(a) for a in fw_plus.assumptions}
-        pref_keys = {str(k) for k in fw_plus.preferences.keys()}
-        if not pref_keys.issubset(all_assumpptions):
-            warnings.append(
-                "Incomplete preference relation detected: not all assumptions appear in the preference mapping."
-            )
-
-    # 4) Final snapshot
-    final_snapshot = _make_snapshot(fw_plus)
-
-    # 5) Serialize ABA+ pieces as strings
-    assumption_sets = sorted(
-        [_format_set(s)
-         for s in getattr(fw_plus, "assumption_combinations", [])],
-        key=lambda x: (len(x), x)
-    )
-
-    normal_str = [
-        f"{_format_set(src)} → {_format_set(dst)}"
-        for (src, dst) in sorted(
-            getattr(fw_plus, "normal_attacks", []),
-            key=lambda p: (str(p[0]), str(p[1])),
-        )
-    ]
-
-    reverse_str = [
-        f"{_format_set(src)} → {_format_set(dst)}"
-        for (src, dst) in sorted(
-            getattr(fw_plus, "reverse_attacks", []),
-            key=lambda p: (str(p[0]), str(p[1])),
-        )
-    ]
-    # arguments/attacks from transformed framework (already prepared)
-    arguments = [str(arg) for arg in sorted(fw_plus.arguments, key=str)]
-    attacks = [str(att) for att in sorted(fw_plus.attacks, key=str)]
-
-    # 6) Build response
-    resp = ABAApiResponseModel(
-        meta=MetaInfo(
-            request_id=f"req-{datetime.utcnow().timestamp()}",
-            timestamp=datetime.utcnow().isoformat(),
-            transformed=any(t.applied for t in transformations),
-            transformations_applied=[
-                t.step for t in transformations if t.applied],
-            warnings=warnings,
-            errors=[],
-        ),
-        original_framework=original_snapshot,
-        transformations=transformations,
-        final_framework=final_snapshot,
-        arguments=arguments,
-        attacks=attacks,
-        aba_plus=ABAPlusDTO(
-            assumption_combinations=assumption_sets,
-            normal_attacks=normal_str,
-            reverse_attacks=reverse_str,
-        ),
-    )
-    return resp
+@app.post("/aba-plus-upload")
+async def aba_plus_upload(file: UploadFile = File(...)):
+    """
+    Handle ABA+ framework generation.
+    
+    Returns: original & final frameworks with arguments, attacks, AND reverse_attacks for both
+    """
+    content = await file.read()
+    text = content.decode("utf-8")
+    return await _process_aba_framework(text, enable_aba_plus=True)
 
 
 @app.get("/aba-examples")
@@ -389,6 +427,16 @@ def get_aba_example(filename: str):
 
 
 # --- Gradual semantics --- #
+
+# @app.post("/gradual", response_model=GradualOutput)
+# def compute_gradual(input_data: GradualInput):
+#     """API endpoint to compute Weighted h-Categorizer samples and convex hull."""
+#     return compute_gradual_semantics(
+#         A=input_data.A,
+#         R=input_data.R,
+#         n_samples=input_data.n_samples,
+#         max_iter=input_data.max_iter
+#     )
 
 @app.post("/gradual", response_model=GradualOutput)
 def compute_gradual(input_data: GradualInput):
@@ -456,3 +504,4 @@ def get_gradual_example(example_name: str):
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=400, detail="Invalid JSON format in example file")
+
