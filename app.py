@@ -277,35 +277,41 @@ async def _process_aba_framework(
     original_snapshot = _make_snapshot(base_framework)
     final_snapshot = _make_snapshot(transformed_framework)
 
-    # === 6. Build response ===
+    # === 6. Build response with CORRECT structure ===
+    before_state = {
+        "framework": original_snapshot.dict(),
+        "arguments": original_arguments,
+        "arguments_attacks": original_arguments_attacks,
+        "argument_attacks": original_arguments_attacks,  # same as arguments_attacks for classical ABA
+        "assumption_set_attacks": original_aba_plus_attacks if enable_aba_plus else [],
+        "reverse_attacks": original_reverse_attacks if enable_aba_plus else [],
+        "assumption_sets": original_assumption_sets if enable_aba_plus else [],
+    }
+
+    after_state = {
+        "framework": final_snapshot.dict(),
+        "arguments": final_arguments,
+        "arguments_attacks": final_arguments_attacks,
+        "argument_attacks": final_arguments_attacks,  # same as arguments_attacks for classical ABA
+        "assumption_set_attacks": final_aba_plus_attacks if enable_aba_plus else [],
+        "reverse_attacks": final_reverse_attacks if enable_aba_plus else [],
+        "assumption_sets": final_assumption_sets if enable_aba_plus else [],
+    }
+
     response = {
         "meta": {
             "request_id": f"req-{datetime.utcnow().timestamp()}",
             "timestamp": datetime.utcnow().isoformat(),
-            "transformed": any(t["applied"] for t in [_transform_to_dict(t) for t in transformations]),
+            "transformed": any(t.get("applied", False) for t in [_transform_to_dict(t) for t in transformations]),
             "transformations_applied": [
-                t["step"] for t in [_transform_to_dict(t) for t in transformations] if t["applied"]
+                t.get("step") for t in [_transform_to_dict(t) for t in transformations] if t.get("applied", False)
             ],
             "warnings": warnings,
             "errors": [],
         },
-        "original_framework": {
-            "framework": original_snapshot,
-            "arguments": original_arguments,
-            "arguments_attacks": original_arguments_attacks,
-            "normal_attacks": original_aba_plus_attacks if enable_aba_plus else [],
-            "reverse_attacks": original_reverse_attacks if enable_aba_plus else [],
-            "assumption_sets": original_assumption_sets if enable_aba_plus else [],
-        },
+        "before_transformation": before_state,
+        "after_transformation": after_state,
         "transformations": [_transform_to_dict(t) for t in transformations],
-        "final_framework": {
-            "framework": final_snapshot,
-            "arguments": final_arguments,
-            "arguments_attacks": final_arguments_attacks,
-            "normal_attacks": final_aba_plus_attacks if enable_aba_plus else [],
-            "reverse_attacks": final_reverse_attacks if enable_aba_plus else [],
-            "assumption_sets": final_assumption_sets if enable_aba_plus else [],
-        },
     }
 
     return response
