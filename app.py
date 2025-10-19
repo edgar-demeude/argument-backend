@@ -293,9 +293,9 @@ async def _process_aba_framework(
         "arguments": final_arguments,
         "arguments_attacks": final_arguments_attacks,
         "argument_attacks": final_arguments_attacks,  # same as arguments_attacks for classical ABA
-        "assumption_set_attacks": final_aba_plus_attacks if enable_aba_plus else [],
-        "reverse_attacks": final_reverse_attacks if enable_aba_plus else [],
-        "assumption_sets": final_assumption_sets if enable_aba_plus else [],
+        "assumption_set_attacks": original_aba_plus_attacks if enable_aba_plus else [],
+        "reverse_attacks": original_reverse_attacks if enable_aba_plus else [],
+        "assumption_sets": original_assumption_sets if enable_aba_plus else [],
     }
 
     response = {
